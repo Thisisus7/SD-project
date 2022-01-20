@@ -100,7 +100,7 @@ class Agent:
         q_next = self.Q_eval.forward(new_state_batch)    # agents estimate of the next state,  add target function here
         q_next[terminal_batch] = 0.0
 
-        q_target = reward_batch + self.gamma*T.max(q_next, dim=1)[0]    # vcalculate target value
+        q_target = reward_batch + self.gamma*T.max(q_next, dim=1)[0]    # calculate target value
         loss = self.Q_eval.loss(q_target, q_eval).to(self.Q_eval.device)
         loss.backward()
         self.Q_eval.optimizer.step()
