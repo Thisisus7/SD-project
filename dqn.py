@@ -6,51 +6,51 @@ import numpy as np
 
 
 class DeepQNetwork(nn.Module):
-    def __init__(self, lr, input_dims, fc1_dims, fc2_dims,
+    def __init__(self, lr, input_dims, fc1_dims, fc2_dims,    # input
                  n_actions):
         super(DeepQNetwork, self).__init__()
         self.input_dims = input_dims
         self.fc1_dims = fc1_dims
         self.fc2_dims = fc2_dims
         self.n_actions = n_actions
-        self.fc1 = nn.Linear(*self.input_dims, self.fc1_dims)
-        self.fc2 = nn.Linear(self.fc1_dims, self.fc2_dims)
-        self.fc3 = nn.Linear(self.fc2_dims, self.n_actions)
+        self.fc1 = nn.Linear(*self.input_dims, self.fc1_dims)    # layer 1 of NN
+        self.fc2 = nn.Linear(self.fc1_dims, self.fc2_dims)       # layer 2
+        self.fc3 = nn.Linear(self.fc2_dims, self.n_actions)      # output layer
 
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
-        self.loss = nn.MSELoss()
+        self.loss = nn.MSELoss()                                 # mean squared error
         self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
         self.to(self.device)
 
     def forward(self, state):
-        x = F.relu(self.fc1(state))
-        x = F.relu(self.fc2(x))
-        actions = self.fc3(x)
+        x = F.relu(self.fc1(state))    # layer1 : state => activate with a value function 
+        x = F.relu(self.fc2(x))        # same thing as layer 1
+        actions = self.fc3(x)          # return the raw value to get the agent raw estimate
 
         return actions
 
 
 class Agent:
-    def __init__(self, gamma, epsilon, lr, input_dims, batch_size, n_actions,
+    def __init__(self, gamma, epsilon, lr, input_dims, batch_size, n_actions,    # lr: learning rate; max_mem: max memory; n_actions: number of actions
                  max_mem_size=100000, eps_end=0.05, eps_dec=5e-4):
         self.gamma = gamma
         self.epsilon = epsilon
         self.eps_min = eps_end
         self.eps_dec = eps_dec
         self.lr = lr
-        self.action_space = [i for i in range(n_actions)]
+        self.action_space = [i for i in range(n_actions)]    # available actions
         self.mem_size = max_mem_size
         self.batch_size = batch_size
-        self.mem_cntr = 0
+        self.mem_cntr = 0                                    # memory counter
         self.iter_cntr = 0
         self.replace_target = 100
 
-        self.Q_eval = DeepQNetwork(lr, n_actions=n_actions,
+        self.Q_eval = DeepQNetwork(lr, n_actions=n_actions,    # evaluation
                                    input_dims=input_dims,
                                    fc1_dims=256, fc2_dims=256)
         self.state_memory = np.zeros((self.mem_size, *input_dims),
                                      dtype=np.float32)
-        self.new_state_memory = np.zeros((self.mem_size, *input_dims),
+        self.new_state_memory = np.zeros((self.mem_size, *input_dims),    # track the new state
                                          dtype=np.float32)
         self.action_memory = np.zeros(self.mem_size, dtype=np.int32)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
@@ -66,21 +66,21 @@ class Agent:
 
         self.mem_cntr += 1
 
-    def choose_action(self, observation):
+    def choose_action(self, observation):    # observation: current state of environment
         if np.random.random() > self.epsilon:
             state = T.tensor([observation]).to(self.Q_eval.device)
             actions = self.Q_eval.forward(state)
-            action = T.argmax(actions).item()
+            action = T.argmax(actions).item()    # the maximal action of the state
         else:
             action = np.random.choice(self.action_space)
 
         return action
 
     def learn(self):
-        if self.mem_cntr < self.batch_size:
+        if self.mem_cntr < self.batch_size:    # start learning until the memory fills up the batch
             return
 
-        self.Q_eval.optimizer.zero_grad()
+        self.Q_eval.optimizer.zero_grad()      # zero the gradient 
 
         max_mem = min(self.mem_cntr, self.mem_size)
 
@@ -95,13 +95,12 @@ class Agent:
                 self.reward_memory[batch]).to(self.Q_eval.device)
         terminal_batch = T.tensor(
                 self.terminal_memory[batch]).to(self.Q_eval.device)
-
-        q_eval = self.Q_eval.forward(state_batch)[batch_index, action_batch]
-        q_next = self.Q_eval.forward(new_state_batch)
+        # move the agent estimate for the value of the current state towards the maximal value for next state.
+        q_eval = self.Q_eval.forward(state_batch)[batch_index, action_batch]    # get the values of the actions we took in each set of memory batch
+        q_next = self.Q_eval.forward(new_state_batch)    # agents estimate of the next state,  add target function here
         q_next[terminal_batch] = 0.0
 
-        q_target = reward_batch + self.gamma*T.max(q_next, dim=1)[0]
-
+        q_target = reward_batch + self.gamma*T.max(q_next, dim=1)[0]    # vcalculate target value
         loss = self.Q_eval.loss(q_target, q_eval).to(self.Q_eval.device)
         loss.backward()
         self.Q_eval.optimizer.step()
